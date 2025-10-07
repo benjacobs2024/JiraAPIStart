@@ -43,8 +43,8 @@ This codebase serves as both a working example and a testing tool for developers
 
 ```bash
 # Clone the repository
-git clone [REPOSITORY_URL]
-cd JiraTestSample
+git clone https://github.com/benjacobs2024/JiraAPIStart.git
+cd JiraAPIStart
 
 # Install dependencies
 npm install
@@ -1214,7 +1214,7 @@ console.log(`Using token: ${process.env.JIRA_API_TOKEN.substring(0, 4)}...${proc
 ### Support
 
 For issues with this reference implementation:
-- Open an issue on GitHub: [REPOSITORY_URL]/issues
+- Open an issue on GitHub: https://github.com/benjacobs2024/JiraAPIStart/issues
 - Contact: [YOUR_CONTACT_INFO]
 
 For Jira API issues:

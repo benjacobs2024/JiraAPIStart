@@ -19,8 +19,8 @@ Includes a web-based testing interface and Node.js proxy server to help develope
 
 ```bash
 # Clone repository
-git clone [REPOSITORY_URL]
-cd JiraTestSample
+git clone https://github.com/benjacobs2024/JiraAPIStart.git
+cd JiraAPIStart
 
 # Install dependencies
 npm install
@@ -164,8 +164,8 @@ Full troubleshooting guide: [DEVELOPER_GUIDE.md#troubleshooting](DEVELOPER_GUIDE
 
 ## Support
 
-- **Issues**: [REPOSITORY_URL]/issues
-- **Contact**: [YOUR_CONTACT_INFO]
+- **Issues**: https://github.com/benjacobs2024/JiraAPIStart/issues
+- **Documentation**: https://github.com/benjacobs2024/JiraAPIStart
 
 ---
 
