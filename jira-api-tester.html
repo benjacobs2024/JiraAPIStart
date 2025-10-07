@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jira API Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 30px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .site-info {
+            color: #7f8c8d;
+            font-size: 14px;
+            margin-bottom: 30px;
+            padding: 10px;
+            background: #ecf0f1;
+            border-radius: 6px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+
+        .section h2 {
+            color: #34495e;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            color: #555;
+            font-weight: 500;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        button:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+
+        .authenticated {
+            display: inline-block;
+            padding: 5px 12px;
+            background: #28a745;
+            color: white;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .issue-item {
+            background: white;
+            padding: 15px;
+            margin-top: 10px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+
+        .issue-key {
+            font-weight: 600;
+            color: #667eea;
+            font-size: 16px;
+        }
+
+        .transition-list {
+            margin-top: 10px;
+        }
+
+        .transition-btn {
+            margin: 5px 5px 5px 0;
+            padding: 8px 16px;
+            font-size: 12px;
+            background: #28a745;
+        }
+
+        .transition-btn:hover:not(:disabled) {
+            background: #218838;
+        }
+
+        .small-text {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Jira API Tester</h1>
+        <div class="site-info">
+            <strong>Reference Implementation:</strong> Test Jira Cloud API integration - Authentication, Issue Creation, Transitions, and Comments
+        </div>
+
+        <!-- Authentication Section -->
+        <div class="section">
+            <h2>1. Authentication <span id="auth-badge"></span></h2>
+            <div class="form-group">
+                <label for="email">Email Address:</label>
+                <input type="email" id="email" placeholder="your-email@example.com">
+            </div>
+            <div class="form-group">
+                <label for="apiKey">API Token:</label>
+                <input type="password" id="apiKey" placeholder="Your Jira API token">
+                <div class="small-text">Get your API token from: https://id.atlassian.com/manage-profile/security/api-tokens</div>
+            </div>
+            <button onclick="validateCredentials()">Validate Credentials</button>
+            <div id="auth-status" class="status"></div>
+        </div>
+
+        <!-- Create Issue Section -->
+        <div class="section">
+            <h2>2. Create Issue</h2>
+            <div class="form-group">
+                <label for="projectKey">Project Key:</label>
+                <input type="text" id="projectKey" value="JTS" placeholder="JTS">
+            </div>
+            <div class="form-group">
+                <label for="projectType">Project Type:</label>
+                <select id="projectType">
+                    <option value="servicedesk">Service Desk / JSM</option>
+                    <option value="regular">Regular Jira Project</option>
+                </select>
+            </div>
+            <div class="form-group" id="requestTypeGroup">
+                <label for="requestTypeId">Request Type ID:</label>
+                <input type="number" id="requestTypeId" placeholder="e.g., 1, 10, 25">
+                <button type="button" onclick="getRequestTypes()" style="margin-top: 5px; padding: 8px 16px; font-size: 12px;">Get Request Types</button>
+                <div id="request-types-list" style="margin-top: 10px;"></div>
+            </div>
+            <div class="form-group" id="issueTypeGroup" style="display:none;">
+                <label for="issueType">Issue Type:</label>
+                <input type="text" id="issueType" value="Task" placeholder="Task, Bug, Story, etc.">
+            </div>
+            <div class="form-group">
+                <label for="summary">Summary:</label>
+                <input type="text" id="summary" placeholder="Issue summary">
+            </div>
+            <div class="form-group">
+                <label for="description">Description:</label>
+                <textarea id="description" rows="4" placeholder="Issue description"></textarea>
+            </div>
+            <button id="create-btn" onclick="createIssue()" disabled>Create Issue</button>
+            <button type="button" onclick="generateCurlCommand()" style="margin-left: 10px; background: #6c757d;">Generate curl Command</button>
+            <div id="create-status" class="status"></div>
+            <div id="curl-command" style="margin-top: 15px; display: none; background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 6px; font-family: monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap;"></div>
+        </div>
+
+        <!-- Transitions Section -->
+        <div class="section">
+            <h2>3. Test Transitions</h2>
+            <div class="form-group">
+                <label for="issueKey">Issue Key:</label>
+                <input type="text" id="issueKey" placeholder="JTS-123">
+            </div>
+            <button id="get-transitions-btn" onclick="getTransitions()" disabled>Get Available Transitions</button>
+            <div id="transitions-container"></div>
+            <div id="transitions-status" class="status"></div>
+        </div>
+
+        <!-- Comments Section -->
+        <div class="section">
+            <h2>4. Add Comment</h2>
+            <div class="form-group">
+                <label for="commentIssueKey">Issue Key:</label>
+                <input type="text" id="commentIssueKey" placeholder="JTS-123">
+            </div>
+            <div class="form-group">
+                <label for="commentText">Comment:</label>
+                <textarea id="commentText" rows="4" placeholder="Enter your comment here"></textarea>
+            </div>
+            <button id="add-comment-btn" onclick="addComment()" disabled>Add Comment</button>
+            <div id="comment-status" class="status"></div>
+        </div>
+    </div>
+
+    <script>
+        const JIRA_DOMAIN = '/api';
+        let authHeader = '';
+        let isAuthenticated = false;
+
+        // Toggle between service desk and regular project fields
+        document.addEventListener('DOMContentLoaded', function() {
+            const projectTypeSelect = document.getElementById('projectType');
+            projectTypeSelect.addEventListener('change', function() {
+                const isServiceDesk = this.value === 'servicedesk';
+                document.getElementById('requestTypeGroup').style.display = isServiceDesk ? 'block' : 'none';
+                document.getElementById('issueTypeGroup').style.display = isServiceDesk ? 'none' : 'block';
+            });
+        });
+
+        function getAuthHeader() {
+            const email = document.getElementById('email').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            console.log('Email:', email);
+            console.log('API Key length:', apiKey.length);
+            const credentials = email + ':' + apiKey;
+            const encoded = btoa(credentials);
+            console.log('Encoded auth (first 30 chars):', encoded.substring(0, 30));
+            return 'Basic ' + encoded;
+        }
+
+        function showStatus(elementId, message, type) {
+            const statusEl = document.getElementById(elementId);
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+        }
+
+        async function validateCredentials() {
+            const email = document.getElementById('email').value;
+            const apiKey = document.getElementById('apiKey').value;
+
+            if (!email || !apiKey) {
+                showStatus('auth-status', 'Please enter both email and API token', 'error');
+                return;
+            }
+
+            showStatus('auth-status', 'Validating credentials...', 'info');
+
+            try {
+                authHeader = getAuthHeader();
+                const response = await fetch(`${JIRA_DOMAIN}/rest/api/3/myself`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': authHeader,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    isAuthenticated = true;
+                    showStatus('auth-status', `✓ Authentication successful! Welcome, ${data.displayName}`, 'success');
+                    document.getElementById('auth-badge').innerHTML = '<span class="authenticated">✓ Authenticated</span>';
+                    document.getElementById('create-btn').disabled = false;
+                    document.getElementById('get-transitions-btn').disabled = false;
+                    document.getElementById('add-comment-btn').disabled = false;
+                } else {
+                    isAuthenticated = false;
+                    const errorData = await response.json();
+                    showStatus('auth-status', `✗ Authentication failed: ${errorData.message || response.statusText}`, 'error');
+                    document.getElementById('auth-badge').innerHTML = '';
+                    document.getElementById('create-btn').disabled = true;
+                    document.getElementById('get-transitions-btn').disabled = true;
+                    document.getElementById('add-comment-btn').disabled = true;
+                }
+            } catch (error) {
+                isAuthenticated = false;
+                showStatus('auth-status', `✗ Error: ${error.message}`, 'error');
+                document.getElementById('auth-badge').innerHTML = '';
+                document.getElementById('create-btn').disabled = true;
+                document.getElementById('get-transitions-btn').disabled = true;
+            }
+        }
+
+        async function getRequestTypes() {
+            if (!isAuthenticated) {
+                alert('Please authenticate first');
+                return;
+            }
+
+            const projectKey = document.getElementById('projectKey').value;
+            if (!projectKey) {
+                alert('Please enter a project key');
+                return;
+            }
+
+            try {
+                // First, get the service desk ID
+                const serviceDeskResponse = await fetch(`${JIRA_DOMAIN}/rest/servicedeskapi/servicedesk/${projectKey}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': authHeader,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!serviceDeskResponse.ok) {
+                    throw new Error('Service desk not found');
+                }
+
+                const serviceDeskData = await serviceDeskResponse.json();
+                const serviceDeskId = serviceDeskData.id;
+
+                // Get request types
+                const response = await fetch(`${JIRA_DOMAIN}/rest/servicedeskapi/servicedesk/${serviceDeskId}/requesttype`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': authHeader,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const requestTypes = data.values || [];
+
+                    let html = '<div style="background: white; padding: 10px; border: 1px solid #ddd; border-radius: 4px; max-height: 200px; overflow-y: auto;">';
+                    html += '<strong>Available Request Types:</strong><br><br>';
+
+                    requestTypes.forEach(rt => {
+                        html += `<div style="margin-bottom: 5px;"><strong>${rt.name}</strong> (ID: ${rt.id})</div>`;
+                    });
+
+                    html += '</div>';
+                    document.getElementById('request-types-list').innerHTML = html;
+                } else {
+                    const errorData = await response.json();
+                    alert(`Error: ${errorData.errorMessages || errorData.message || response.statusText}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        async function generateCurlCommand() {
+            const projectKey = document.getElementById('projectKey').value;
+            const projectType = document.getElementById('projectType').value;
+            const summary = document.getElementById('summary').value;
+            const description = document.getElementById('description').value;
+            const email = document.getElementById('email').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+
+            if (!email || !apiKey || !projectKey || !summary) {
+                alert('Please fill in email, API key, project key, and summary');
+                return;
+            }
+
+            let curlCmd = '';
+
+            if (projectType === 'servicedesk') {
+                const requestTypeId = document.getElementById('requestTypeId').value;
+                if (!requestTypeId) {
+                    alert('Please provide a Request Type ID');
+                    return;
+                }
+
+                curlCmd = `# Get Service Desk ID first
+SD_ID=$(curl -s -u "${email}:${apiKey}" \\
+  -H "Accept: application/json" \\
+  "https://mmn-service.atlassian.net/rest/servicedeskapi/servicedesk/${projectKey}" | \\
+  grep -o '"id":"[0-9]*"' | grep -o '[0-9]*')
+
+echo "Service Desk ID: $SD_ID"
+
+# Create Service Desk Request
+curl -u "${email}:YOUR_API_TOKEN" \\
+  -X POST \\
+  -H "Accept: application/json" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "serviceDeskId": "'$SD_ID'",
+    "requestTypeId": "${requestTypeId}",
+    "requestFieldValues": {
+      "summary": "${summary.replace(/"/g, '\\"')}",
+      "description": "${description.replace(/"/g, '\\"')}"
+    }
+  }' \\
+  "https://mmn-service.atlassian.net/rest/servicedeskapi/request"`;
+            } else {
+                const issueType = document.getElementById('issueType').value;
+                curlCmd = `curl -u "${email}:YOUR_API_TOKEN" \\
+  -X POST \\
+  -H "Accept: application/json" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "fields": {
+      "project": { "key": "${projectKey}" },
+      "summary": "${summary.replace(/"/g, '\\"')}",
+      "description": {
+        "type": "doc",
+        "version": 1,
+        "content": [{
+          "type": "paragraph",
+          "content": [{ "type": "text", "text": "${description.replace(/"/g, '\\"')}" }]
+        }]
+      },
+      "issuetype": { "name": "${issueType}" }
+    }
+  }' \\
+  "https://mmn-service.atlassian.net/rest/api/3/issue"`;
+            }
+
+            const curlDiv = document.getElementById('curl-command');
+            curlDiv.innerHTML = `<strong>Copy and run this command in your terminal (replace YOUR_API_TOKEN):</strong><br><br>${curlCmd}`;
+            curlDiv.style.display = 'block';
+        }
+
+        async function createIssue() {
+            if (!isAuthenticated) {
+                showStatus('create-status', 'Please authenticate first', 'error');
+                return;
+            }
+
+            const projectKey = document.getElementById('projectKey').value;
+            const projectType = document.getElementById('projectType').value;
+            const summary = document.getElementById('summary').value;
+            const description = document.getElementById('description').value;
+
+            if (!projectKey || !summary) {
+                showStatus('create-status', 'Please fill in all required fields', 'error');
+                return;
+            }
+
+            if (projectType === 'servicedesk') {
+                const requestTypeId = document.getElementById('requestTypeId').value;
+                if (!requestTypeId) {
+                    showStatus('create-status', 'Please provide a Request Type ID', 'error');
+                    return;
+                }
+            } else {
+                const issueType = document.getElementById('issueType').value;
+                if (!issueType) {
+                    showStatus('create-status', 'Please provide an Issue Type', 'error');
+                    return;
+                }
+            }
+
+            showStatus('create-status', 'Creating issue...', 'info');
+
+            try {
+                // Use server-side endpoint to bypass browser XSRF check
+                const response = await fetch('/create-issue', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        authHeader: authHeader,
+                        projectKey: projectKey,
+                        projectType: projectType,
+                        requestTypeId: document.getElementById('requestTypeId').value,
+                        issueType: document.getElementById('issueType').value,
+                        summary: summary,
+                        description: description
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const issueKey = data.key || data.issueKey;
+                    showStatus('create-status', `✓ Issue created successfully! Key: ${issueKey}`, 'success');
+                    document.getElementById('issueKey').value = issueKey;
+
+                    // Clear form
+                    document.getElementById('summary').value = '';
+                    document.getElementById('description').value = '';
+                } else {
+                    showStatus('create-status', `✗ Failed to create issue: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('create-status', `✗ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function getTransitions() {
+            if (!isAuthenticated) {
+                showStatus('transitions-status', 'Please authenticate first', 'error');
+                return;
+            }
+
+            const issueKey = document.getElementById('issueKey').value;
+
+            if (!issueKey) {
+                showStatus('transitions-status', 'Please enter an issue key', 'error');
+                return;
+            }
+
+            showStatus('transitions-status', 'Fetching transitions...', 'info');
+
+            try {
+                const response = await fetch(`${JIRA_DOMAIN}/rest/api/3/issue/${issueKey}/transitions`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': authHeader,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayTransitions(issueKey, data.transitions);
+                    showStatus('transitions-status', `✓ Found ${data.transitions.length} available transitions`, 'success');
+                } else {
+                    const errorData = await response.json();
+                    showStatus('transitions-status', `✗ Failed to get transitions: ${errorData.message || response.statusText}`, 'error');
+                    document.getElementById('transitions-container').innerHTML = '';
+                }
+            } catch (error) {
+                showStatus('transitions-status', `✗ Error: ${error.message}`, 'error');
+                document.getElementById('transitions-container').innerHTML = '';
+            }
+        }
+
+        function displayTransitions(issueKey, transitions) {
+            const container = document.getElementById('transitions-container');
+
+            if (transitions.length === 0) {
+                container.innerHTML = '<div class="issue-item">No transitions available for this issue.</div>';
+                return;
+            }
+
+            let html = '<div class="issue-item">';
+            html += `<div class="issue-key">${issueKey}</div>`;
+            html += '<div class="transition-list">';
+
+            transitions.forEach(transition => {
+                html += `<button class="transition-btn" onclick="executeTransition('${issueKey}', '${transition.id}', '${transition.name}')">${transition.name}</button>`;
+            });
+
+            html += '</div></div>';
+            container.innerHTML = html;
+        }
+
+        async function executeTransition(issueKey, transitionId, transitionName) {
+            if (!confirm(`Execute transition "${transitionName}" on ${issueKey}?`)) {
+                return;
+            }
+
+            showStatus('transitions-status', `Executing transition: ${transitionName}...`, 'info');
+
+            try {
+                // Use server-side endpoint to bypass browser XSRF check
+                const response = await fetch('/execute-transition', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        authHeader: authHeader,
+                        issueKey: issueKey,
+                        transitionId: transitionId
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showStatus('transitions-status', `✓ Transition "${transitionName}" executed successfully!`, 'success');
+                    // Refresh transitions
+                    setTimeout(() => getTransitions(), 1000);
+                } else {
+                    showStatus('transitions-status', `✗ Failed to execute transition: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('transitions-status', `✗ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function addComment() {
+            if (!isAuthenticated) {
+                showStatus('comment-status', 'Please authenticate first', 'error');
+                return;
+            }
+
+            const issueKey = document.getElementById('commentIssueKey').value.trim();
+            const commentText = document.getElementById('commentText').value.trim();
+
+            if (!issueKey || !commentText) {
+                showStatus('comment-status', 'Please enter both issue key and comment', 'error');
+                return;
+            }
+
+            showStatus('comment-status', 'Adding comment...', 'info');
+
+            try {
+                // Use server-side endpoint to bypass browser XSRF check
+                const response = await fetch('/add-comment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        authHeader: authHeader,
+                        issueKey: issueKey,
+                        comment: commentText
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showStatus('comment-status', `✓ Comment added successfully to ${issueKey}!`, 'success');
+                    // Clear the comment field
+                    document.getElementById('commentText').value = '';
+                } else {
+                    showStatus('comment-status', `✗ Failed to add comment: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('comment-status', `✗ Error: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
