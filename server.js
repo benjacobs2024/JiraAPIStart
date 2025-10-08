@@ -356,6 +356,152 @@ app.post('/update-issue-reporter', async (req, res) => {
     }
 });
 
+// Server-side send email notification endpoint
+app.post('/send-notification', async (req, res) => {
+    const { authHeader, issueKey, subject, message, notifyReporter, notifyAssignee, additionalEmails } = req.body;
+
+    if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    if (!subject || !message) {
+        return res.status(400).json({ error: 'Subject and message are required' });
+    }
+
+    try {
+        // Build the notification payload
+        const notificationPayload = {
+            subject: subject,
+            textBody: message,
+            htmlBody: message.replace(/\n/g, '<br>')
+        };
+
+        // Add recipients
+        const to = {};
+
+        if (notifyReporter) {
+            to.reporter = true;
+        }
+
+        if (notifyAssignee) {
+            to.assignee = true;
+        }
+
+        // Add additional email addresses
+        if (additionalEmails && additionalEmails.length > 0) {
+            // Search for users by email and add them
+            const users = [];
+            for (const email of additionalEmails) {
+                try {
+                    const searchResponse = await fetch(`https://mmn-service.atlassian.net/rest/api/3/user/search?query=${encodeURIComponent(email)}`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': authHeader,
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    if (searchResponse.ok) {
+                        const foundUsers = await searchResponse.json();
+                        if (foundUsers && foundUsers.length > 0) {
+                            users.push({ accountId: foundUsers[0].accountId });
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error searching for user:', email, e);
+                }
+            }
+
+            if (users.length > 0) {
+                to.users = users;
+            }
+        }
+
+        notificationPayload.to = to;
+
+        console.log('Sending notification:', JSON.stringify(notificationPayload, null, 2));
+
+        // Send the notification
+        const response = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}/notify`, {
+            method: 'POST',
+            headers: {
+                'Authorization': authHeader,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(notificationPayload)
+        });
+
+        if (response.ok || response.status === 204) {
+            // Notification sent successfully, now add a comment to the issue
+            console.log('Notification sent, now adding comment to issue history...');
+
+            try {
+                const commentPayload = {
+                    body: {
+                        type: 'doc',
+                        version: 1,
+                        content: [{
+                            type: 'paragraph',
+                            content: [{
+                                type: 'text',
+                                text: `📧 Notification sent: ${subject}\n\n${message}`
+                            }]
+                        }]
+                    }
+                };
+
+                const commentResponse = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}/comment`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': authHeader,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(commentPayload)
+                });
+
+                if (commentResponse.ok) {
+                    console.log('Comment added to issue history successfully');
+                    res.status(200).json({
+                        success: true,
+                        message: 'Notification sent and saved to issue history'
+                    });
+                } else {
+                    // Notification sent but comment failed
+                    console.error('Failed to add comment to issue');
+                    res.status(200).json({
+                        success: true,
+                        message: 'Notification sent but failed to save to issue history',
+                        warning: 'Comment could not be added'
+                    });
+                }
+            } catch (commentError) {
+                console.error('Error adding comment:', commentError);
+                res.status(200).json({
+                    success: true,
+                    message: 'Notification sent but failed to save to issue history',
+                    warning: 'Comment could not be added'
+                });
+            }
+        } else {
+            const errorText = await response.text();
+            let errorMessage;
+            try {
+                const errorData = JSON.parse(errorText);
+                errorMessage = errorData.errorMessages?.join(', ') || errorData.errors ? JSON.stringify(errorData.errors) : errorText;
+            } catch (e) {
+                errorMessage = errorText;
+            }
+            console.error('Notification error:', errorMessage);
+            res.status(response.status).json({ error: errorMessage });
+        }
+    } catch (error) {
+        console.error('Send notification error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Server-side transition execution endpoint
 app.post('/execute-transition', async (req, res) => {
     const { authHeader, issueKey, transitionId } = req.body;

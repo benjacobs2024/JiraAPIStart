@@ -444,6 +444,48 @@
 
             <div id="reporter-status" class="status"></div>
         </div>
+
+        <!-- Email Notification Section -->
+        <div class="section">
+            <h2>8. Send Email Notification</h2>
+            <div class="form-group">
+                <label for="notificationIssueKey">Issue Key:</label>
+                <input type="text" id="notificationIssueKey" placeholder="JTS-123">
+            </div>
+            <div class="form-group">
+                <label for="notificationSubject">Subject:</label>
+                <input type="text" id="notificationSubject" placeholder="Notification subject">
+            </div>
+            <div class="form-group">
+                <label for="notificationMessage">Message:</label>
+                <textarea id="notificationMessage" rows="6" placeholder="Enter your notification message here"></textarea>
+            </div>
+            <div class="form-group">
+                <label style="display: block; margin-bottom: 10px;">Notify:</label>
+                <div style="display: flex; gap: 20px; margin-bottom: 10px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="notifyReporter" style="width: auto; margin-right: 8px;">
+                        Reporter
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="notifyAssignee" style="width: auto; margin-right: 8px;">
+                        Assignee
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="additionalEmails">Additional Email Addresses (comma-separated):</label>
+                <input type="text" id="additionalEmails" placeholder="user1@example.com, user2@example.com">
+                <div class="small-text">Enter email addresses of Jira users to notify</div>
+            </div>
+            <div style="background: #e8f4f8; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #17a2b8;">
+                <div style="font-size: 13px; color: #0c5460;">
+                    <strong>ℹ️ Note:</strong> The notification message will be saved as a comment in the issue's history for future reference.
+                </div>
+            </div>
+            <button id="send-notification-btn" onclick="sendNotification()" disabled>Send Notification</button>
+            <div id="notification-status" class="status"></div>
+        </div>
     </div>
 
     <script>
@@ -511,6 +553,7 @@
                     document.getElementById('add-attachment-btn').disabled = false;
                     document.getElementById('list-attachments-btn').disabled = false;
                     document.getElementById('get-reporter-btn').disabled = false;
+                    document.getElementById('send-notification-btn').disabled = false;
                 } else {
                     isAuthenticated = false;
                     const errorData = await response.json();
@@ -522,6 +565,7 @@
                     document.getElementById('add-attachment-btn').disabled = true;
                     document.getElementById('list-attachments-btn').disabled = true;
                     document.getElementById('get-reporter-btn').disabled = true;
+                    document.getElementById('send-notification-btn').disabled = true;
                 }
             } catch (error) {
                 isAuthenticated = false;
@@ -1192,6 +1236,97 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                 }
             } catch (error) {
                 showStatus('reporter-status', `✗ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function sendNotification() {
+            if (!isAuthenticated) {
+                showStatus('notification-status', 'Please authenticate first', 'error');
+                return;
+            }
+
+            const issueKey = document.getElementById('notificationIssueKey').value.trim();
+            const subject = document.getElementById('notificationSubject').value.trim();
+            const message = document.getElementById('notificationMessage').value.trim();
+            const notifyReporter = document.getElementById('notifyReporter').checked;
+            const notifyAssignee = document.getElementById('notifyAssignee').checked;
+            const additionalEmailsStr = document.getElementById('additionalEmails').value.trim();
+
+            if (!issueKey) {
+                showStatus('notification-status', 'Please enter an issue key', 'error');
+                return;
+            }
+
+            if (!subject) {
+                showStatus('notification-status', 'Please enter a subject', 'error');
+                return;
+            }
+
+            if (!message) {
+                showStatus('notification-status', 'Please enter a message', 'error');
+                return;
+            }
+
+            if (!notifyReporter && !notifyAssignee && !additionalEmailsStr) {
+                showStatus('notification-status', 'Please select at least one recipient (Reporter, Assignee, or enter email addresses)', 'error');
+                return;
+            }
+
+            // Parse additional emails
+            const additionalEmails = additionalEmailsStr ? additionalEmailsStr.split(',').map(e => e.trim()).filter(e => e) : [];
+
+            showStatus('notification-status', 'Sending notification...', 'info');
+
+            try {
+                const response = await fetch('/send-notification', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        authHeader: authHeader,
+                        issueKey: issueKey,
+                        subject: subject,
+                        message: message,
+                        notifyReporter: notifyReporter,
+                        notifyAssignee: notifyAssignee,
+                        additionalEmails: additionalEmails
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    let recipients = [];
+                    if (notifyReporter) recipients.push('Reporter');
+                    if (notifyAssignee) recipients.push('Assignee');
+                    if (additionalEmails.length > 0) recipients.push(`${additionalEmails.length} additional user(s)`);
+
+                    let statusMessage = '';
+                    let statusType = 'success';
+
+                    if (data.warning) {
+                        // Notification sent but comment failed
+                        statusMessage = `⚠️ ${data.message} to: ${recipients.join(', ')}. Warning: ${data.warning}`;
+                        statusType = 'info';
+                    } else {
+                        // Both notification and comment succeeded
+                        statusMessage = `✓ ${data.message} to: ${recipients.join(', ')}`;
+                    }
+
+                    showStatus('notification-status', statusMessage, statusType);
+
+                    // Clear the form
+                    document.getElementById('notificationSubject').value = '';
+                    document.getElementById('notificationMessage').value = '';
+                    document.getElementById('notifyReporter').checked = false;
+                    document.getElementById('notifyAssignee').checked = false;
+                    document.getElementById('additionalEmails').value = '';
+                } else {
+                    showStatus('notification-status', `✗ Failed to send notification: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('notification-status', `✗ Error: ${error.message}`, 'error');
             }
         }
     </script>

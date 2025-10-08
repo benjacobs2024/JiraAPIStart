@@ -15,6 +15,7 @@ This repository provides a **complete reference implementation** for integrating
 5. ✅ **Attachments** - Uploading files to existing issues
 6. ✅ **List & Download Attachments** - View and download attachments from issues
 7. ✅ **Reporter Management** - View issue reporter, assignee, creator and update reporter
+8. ✅ **Email Notifications** - Send custom email notifications to reporter, assignee, or specific users
 
 Includes a web-based testing interface and Node.js proxy server to help developers understand and test Jira API integrations.
 
@@ -61,6 +62,9 @@ The Developer Guide includes:
 - **Download Attachments** - Download attachments directly from the browser
 - **Reporter Management** - View reporter, assignee, and creator with avatars
 - **Update Reporter** - Change the reporter by searching user email
+- **Email Notifications** - Send custom notifications to reporter, assignee, or additional users
+- **Custom Notification Content** - Compose subject and message for notifications
+- **Notification History** - Notification messages are automatically saved as comments in the issue
 
 ### Proxy Server Pattern
 
@@ -113,6 +117,7 @@ const JIRA_DOMAIN = 'https://your-domain.atlassian.net';
 | Get Issue Reporter | `/rest/api/3/issue/{key}?fields=reporter,assignee,creator,summary` | GET |
 | Search User | `/rest/api/3/user/search?query={email}` | GET |
 | Update Reporter | `/rest/api/3/issue/{key}` | PUT |
+| Send Notification | `/rest/api/3/issue/{key}/notify` | POST |
 
 ## Usage Example
 
