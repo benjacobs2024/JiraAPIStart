@@ -1,8 +1,20 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Configure multer for file uploads
+const upload = multer({
+    dest: 'uploads/',
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB limit
+    }
+});
 
 // Configure your Jira domain here or set JIRA_DOMAIN environment variable
 const JIRA_DOMAIN = process.env.JIRA_DOMAIN || 'https://your-domain.atlassian.net';
@@ -56,6 +68,101 @@ app.post('/add-comment', async (req, res) => {
         }
     } catch (error) {
         console.error('Add comment error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Server-side attachment upload endpoint
+app.post('/add-attachment', upload.single('file'), async (req, res) => {
+    console.log('=== Add Attachment Request ===');
+    console.log('Body:', req.body);
+    console.log('File:', req.file);
+
+    const { authHeader, issueKey } = req.body;
+
+    if (!authHeader) {
+        console.log('Error: No authHeader provided');
+        return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    if (!req.file) {
+        console.log('Error: No file uploaded');
+        return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    try {
+        // Create FormData with the file
+        const FormData = require('form-data');
+        const formData = new FormData();
+
+        // Add the file as a stream
+        formData.append('file', fs.createReadStream(req.file.path), {
+            filename: req.file.originalname,
+            contentType: req.file.mimetype
+        });
+
+        console.log('Uploading to Jira...');
+        console.log('File:', req.file.originalname, 'Size:', req.file.size);
+
+        // Use https module with form-data for proper multipart upload
+        const uploadPromise = new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'mmn-service.atlassian.net',
+                path: `/rest/api/3/issue/${issueKey}/attachments`,
+                method: 'POST',
+                headers: {
+                    'Authorization': authHeader,
+                    'Accept': 'application/json',
+                    'X-Atlassian-Token': 'no-check',
+                    ...formData.getHeaders()
+                }
+            };
+
+            const request = https.request(options, (response) => {
+                let data = '';
+                response.on('data', chunk => data += chunk);
+                response.on('end', () => {
+                    resolve({
+                        status: response.statusCode,
+                        data: data
+                    });
+                });
+            });
+
+            request.on('error', reject);
+            formData.pipe(request);
+        });
+
+        const result = await uploadPromise;
+
+        let responseData;
+        try {
+            responseData = result.data ? JSON.parse(result.data) : {};
+        } catch (e) {
+            responseData = { rawResponse: result.data };
+        }
+
+        console.log('Jira response status:', result.status);
+        console.log('Jira response data:', responseData);
+
+        // Clean up uploaded file
+        fs.unlinkSync(req.file.path);
+
+        if (result.status >= 200 && result.status < 300) {
+            console.log('Success! Attachment uploaded:', responseData);
+            res.status(200).json(responseData);
+        } else {
+            console.error('Jira API error response (status ' + result.status + '):', responseData);
+            res.status(result.status).json({
+                error: typeof responseData === 'string' ? responseData : JSON.stringify(responseData)
+            });
+        }
+    } catch (error) {
+        // Clean up uploaded file on error
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
+        console.error('Add attachment error:', error.message);
         res.status(500).json({ error: error.message });
     }
 });

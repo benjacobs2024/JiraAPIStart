@@ -181,6 +181,44 @@
             color: #7f8c8d;
             margin-top: 5px;
         }
+
+        .file-input-wrapper {
+            margin-top: 5px;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+
+        .custom-file-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            border: none;
+        }
+
+        .custom-file-button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .file-name-display {
+            margin-top: 10px;
+            padding: 8px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #555;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -270,6 +308,23 @@
             <button id="add-comment-btn" onclick="addComment()" disabled>Add Comment</button>
             <div id="comment-status" class="status"></div>
         </div>
+
+        <!-- Attachments Section -->
+        <div class="section">
+            <h2>5. Add Attachment</h2>
+            <div class="form-group">
+                <label for="attachmentIssueKey">Issue Key:</label>
+                <input type="text" id="attachmentIssueKey" placeholder="JTS-123">
+            </div>
+            <div class="form-group">
+                <label for="attachmentFile">File:</label>
+                <input type="file" id="attachmentFile" onchange="displayFileName(this)" style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 6px; background: white; cursor: pointer;">
+                <div id="fileName" class="file-name-display"></div>
+                <div class="small-text">Maximum file size: 10MB</div>
+            </div>
+            <button id="add-attachment-btn" onclick="addAttachment()" disabled>Upload Attachment</button>
+            <div id="attachment-status" class="status"></div>
+        </div>
     </div>
 
     <script>
@@ -334,6 +389,7 @@
                     document.getElementById('create-btn').disabled = false;
                     document.getElementById('get-transitions-btn').disabled = false;
                     document.getElementById('add-comment-btn').disabled = false;
+                    document.getElementById('add-attachment-btn').disabled = false;
                 } else {
                     isAuthenticated = false;
                     const errorData = await response.json();
@@ -342,6 +398,7 @@
                     document.getElementById('create-btn').disabled = true;
                     document.getElementById('get-transitions-btn').disabled = true;
                     document.getElementById('add-comment-btn').disabled = true;
+                    document.getElementById('add-attachment-btn').disabled = true;
                 }
             } catch (error) {
                 isAuthenticated = false;
@@ -691,6 +748,75 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                 }
             } catch (error) {
                 showStatus('comment-status', `✗ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function displayFileName(input) {
+            const fileNameDisplay = document.getElementById('fileName');
+            if (input.files && input.files.length > 0) {
+                const file = input.files[0];
+                const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+                fileNameDisplay.textContent = `Selected: ${file.name} (${sizeInMB} MB)`;
+                fileNameDisplay.style.display = 'block';
+            } else {
+                fileNameDisplay.style.display = 'none';
+            }
+        }
+
+        async function addAttachment() {
+            if (!isAuthenticated) {
+                showStatus('attachment-status', 'Please authenticate first', 'error');
+                return;
+            }
+
+            const issueKey = document.getElementById('attachmentIssueKey').value.trim();
+            const fileInput = document.getElementById('attachmentFile');
+
+            if (!issueKey) {
+                showStatus('attachment-status', 'Please enter an issue key', 'error');
+                return;
+            }
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showStatus('attachment-status', 'Please select a file to upload', 'error');
+                return;
+            }
+
+            const file = fileInput.files[0];
+
+            // Check file size (10MB limit)
+            if (file.size > 10 * 1024 * 1024) {
+                showStatus('attachment-status', 'File size exceeds 10MB limit', 'error');
+                return;
+            }
+
+            showStatus('attachment-status', `Uploading ${file.name}...`, 'info');
+
+            try {
+                // Create FormData for file upload
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('authHeader', authHeader);
+                formData.append('issueKey', issueKey);
+
+                const response = await fetch('/add-attachment', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const attachmentName = data[0]?.filename || file.name;
+                    showStatus('attachment-status', `✓ Attachment "${attachmentName}" uploaded successfully to ${issueKey}!`, 'success');
+                    // Clear the file input
+                    fileInput.value = '';
+                    document.getElementById('fileName').style.display = 'none';
+                } else {
+                    showStatus('attachment-status', `✗ Failed to upload attachment: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('attachment-status', `✗ Error: ${error.message}`, 'error');
             }
         }
     </script>

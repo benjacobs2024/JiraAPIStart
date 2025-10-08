@@ -39,3 +39,6 @@ api-tokens.txt
 *.tmp
 tmp/
 temp/
+
+# Uploads
+uploads/
