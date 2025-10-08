@@ -2,12 +2,16 @@
 
 ## Overview
 
-This repository contains a reference implementation for integrating with Jira Cloud REST APIs. It demonstrates the four core operations required for most Jira integrations:
+This repository contains a comprehensive reference implementation for integrating with Jira Cloud REST APIs. It demonstrates eight essential operations for Jira integrations:
 
 1. **Authentication** - Using email and API tokens
 2. **Issue Creation** - Creating issues in both regular Jira projects and Service Desk projects
 3. **Workflow Transitions** - Moving issues through workflow states
 4. **Adding Comments** - Posting comments to existing issues
+5. **Attachment Upload** - Uploading files to issues using multipart form data
+6. **List & Download Attachments** - Retrieving and downloading issue attachments
+7. **Reporter Management** - Viewing and updating issue reporter, assignee, and creator
+8. **Email Notifications** - Sending custom notifications with automatic issue history tracking
 
 This codebase serves as both a working example and a testing tool for developers building Jira integrations.
 
@@ -22,6 +26,10 @@ This codebase serves as both a working example and a testing tool for developers
   - [Creating Issues](#creating-issues)
   - [Transitioning Issues](#transitioning-issues)
   - [Adding Comments](#adding-comments)
+  - [Uploading Attachments](#uploading-attachments)
+  - [Listing & Downloading Attachments](#listing--downloading-attachments)
+  - [Reporter Management](#reporter-management)
+  - [Email Notifications](#email-notifications)
 - [Understanding XSRF/CSRF Protection](#understanding-xsrfcsrf-protection)
 - [Code Examples](#code-examples)
 - [Best Practices](#best-practices)
@@ -526,6 +534,349 @@ const searchResponse = await fetch(
 const users = await searchResponse.json();
 const accountId = users[0]?.accountId;
 ```
+
+---
+
+### Uploading Attachments
+
+Attachments allow you to upload files to existing issues. This requires multipart/form-data encoding.
+
+**Endpoint:** `POST /rest/api/3/issue/{issueKey}/attachments`
+
+#### Implementation using Node.js
+
+```javascript
+const FormData = require('form-data');
+const fs = require('fs');
+const https = require('https');
+
+async function uploadAttachment(authHeader, issueKey, filePath) {
+    const formData = new FormData();
+
+    // Add the file to form data
+    formData.append('file', fs.createReadStream(filePath), {
+        filename: path.basename(filePath),
+        contentType: 'application/octet-stream'
+    });
+
+    // Use https module for proper form-data streaming
+    return new Promise((resolve, reject) => {
+        const options = {
+            hostname: 'your-domain.atlassian.net',
+            path: `/rest/api/3/issue/${issueKey}/attachments`,
+            method: 'POST',
+            headers: {
+                'Authorization': authHeader,
+                'Accept': 'application/json',
+                'X-Atlassian-Token': 'no-check',
+                ...formData.getHeaders()
+            }
+        };
+
+        const request = https.request(options, (response) => {
+            let data = '';
+            response.on('data', chunk => data += chunk);
+            response.on('end', () => {
+                if (response.statusCode >= 200 && response.statusCode < 300) {
+                    resolve(JSON.parse(data));
+                } else {
+                    reject(new Error(`Upload failed: ${response.statusCode} - ${data}`));
+                }
+            });
+        });
+
+        request.on('error', reject);
+        formData.pipe(request);
+    });
+}
+
+// Usage
+const attachments = await uploadAttachment(authHeader, 'PROJ-123', './document.pdf');
+console.log('Uploaded:', attachments[0].filename);
+```
+
+**Important Headers:**
+- `X-Atlassian-Token: no-check` - Required to bypass CSRF protection for attachments
+- `Content-Type` - Automatically set by form-data library via `getHeaders()`
+
+**Limitations:**
+- Maximum file size: 10MB (configurable in Jira)
+- Some file types may be blocked by Jira settings
+- Requires appropriate permissions on the issue
+
+---
+
+### Listing & Downloading Attachments
+
+Retrieve and download attachments from issues.
+
+#### List Attachments
+
+**Endpoint:** `GET /rest/api/3/issue/{issueKey}?fields=attachment`
+
+```javascript
+async function listAttachments(domain, authHeader, issueKey) {
+    const response = await fetch(
+        `${domain}/rest/api/3/issue/${issueKey}?fields=attachment`,
+        { headers: { 'Authorization': authHeader } }
+    );
+
+    const data = await response.json();
+    return data.fields.attachment.map(att => ({
+        id: att.id,
+        filename: att.filename,
+        size: att.size,
+        mimeType: att.mimeType,
+        created: att.created,
+        author: att.author.displayName,
+        downloadUrl: att.content
+    }));
+}
+
+// Usage
+const attachments = await listAttachments(domain, authHeader, 'PROJ-123');
+attachments.forEach(att => {
+    console.log(`${att.filename} (${(att.size / 1024).toFixed(2)} KB)`);
+});
+```
+
+#### Download Attachment
+
+```javascript
+async function downloadAttachment(authHeader, downloadUrl, savePath) {
+    const response = await fetch(downloadUrl, {
+        headers: { 'Authorization': authHeader }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Download failed: ${response.statusText}`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    fs.writeFileSync(savePath, Buffer.from(buffer));
+
+    console.log(`Downloaded to: ${savePath}`);
+}
+
+// Usage
+const attachments = await listAttachments(domain, authHeader, 'PROJ-123');
+if (attachments.length > 0) {
+    await downloadAttachment(
+        authHeader,
+        attachments[0].downloadUrl,
+        `./${attachments[0].filename}`
+    );
+}
+```
+
+**Response includes:**
+- `id` - Attachment ID
+- `filename` - Original file name
+- `size` - File size in bytes
+- `mimeType` - Content type
+- `content` - Download URL
+- `thumbnail` - Thumbnail URL (for images)
+- `author` - User who uploaded
+- `created` - Upload timestamp
+
+---
+
+### Reporter Management
+
+View and update issue reporter, assignee, and creator information.
+
+#### Get Issue Reporter Information
+
+**Endpoint:** `GET /rest/api/3/issue/{issueKey}?fields=reporter,assignee,creator,summary`
+
+```javascript
+async function getIssueReporter(domain, authHeader, issueKey) {
+    const response = await fetch(
+        `${domain}/rest/api/3/issue/${issueKey}?fields=reporter,assignee,creator,summary`,
+        { headers: { 'Authorization': authHeader } }
+    );
+
+    const data = await response.json();
+
+    return {
+        key: data.key,
+        summary: data.fields.summary,
+        reporter: {
+            accountId: data.fields.reporter?.accountId,
+            displayName: data.fields.reporter?.displayName,
+            emailAddress: data.fields.reporter?.emailAddress
+        },
+        assignee: data.fields.assignee ? {
+            accountId: data.fields.assignee.accountId,
+            displayName: data.fields.assignee.displayName,
+            emailAddress: data.fields.assignee.emailAddress
+        } : null,
+        creator: {
+            accountId: data.fields.creator?.accountId,
+            displayName: data.fields.creator?.displayName,
+            emailAddress: data.fields.creator?.emailAddress
+        }
+    };
+}
+
+// Usage
+const issueInfo = await getIssueReporter(domain, authHeader, 'PROJ-123');
+console.log(`Reporter: ${issueInfo.reporter.displayName}`);
+console.log(`Assignee: ${issueInfo.assignee?.displayName || 'Unassigned'}`);
+```
+
+#### Update Issue Reporter
+
+**Endpoint:** `PUT /rest/api/3/issue/{issueKey}`
+
+```javascript
+async function updateReporter(domain, authHeader, issueKey, newReporterEmail) {
+    // Step 1: Search for user by email
+    const searchResponse = await fetch(
+        `${domain}/rest/api/3/user/search?query=${encodeURIComponent(newReporterEmail)}`,
+        { headers: { 'Authorization': authHeader } }
+    );
+
+    const users = await searchResponse.json();
+    if (!users || users.length === 0) {
+        throw new Error('User not found with that email address');
+    }
+
+    const accountId = users[0].accountId;
+
+    // Step 2: Update the issue
+    const updateResponse = await fetch(
+        `${domain}/rest/api/3/issue/${issueKey}`,
+        {
+            method: 'PUT',
+            headers: {
+                'Authorization': authHeader,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                fields: {
+                    reporter: { accountId: accountId }
+                }
+            })
+        }
+    );
+
+    if (!updateResponse.ok) {
+        const error = await updateResponse.text();
+        throw new Error(`Failed to update reporter: ${error}`);
+    }
+
+    console.log(`Reporter updated to ${newReporterEmail}`);
+}
+
+// Usage
+await updateReporter(domain, authHeader, 'PROJ-123', 'newreporter@example.com');
+```
+
+**Important Notes:**
+- Updating reporter requires special permissions in Jira
+- Some project configurations may not allow reporter changes
+- Always search by email first to get the accountId
+- User must exist in the Jira instance
+
+---
+
+### Email Notifications
+
+Send custom email notifications to reporter, assignee, or specific users. Notifications are automatically saved as comments in the issue history.
+
+**Endpoint:** `POST /rest/api/3/issue/{issueKey}/notify`
+
+#### Send Notification
+
+```javascript
+async function sendNotification(domain, authHeader, issueKey, options) {
+    const {
+        subject,
+        message,
+        notifyReporter = false,
+        notifyAssignee = false,
+        additionalEmails = []
+    } = options;
+
+    // Build recipient list
+    const to = {};
+    if (notifyReporter) to.reporter = true;
+    if (notifyAssignee) to.assignee = true;
+
+    // Search for additional users by email
+    if (additionalEmails.length > 0) {
+        const users = [];
+        for (const email of additionalEmails) {
+            const searchResponse = await fetch(
+                `${domain}/rest/api/3/user/search?query=${encodeURIComponent(email)}`,
+                { headers: { 'Authorization': authHeader } }
+            );
+            const foundUsers = await searchResponse.json();
+            if (foundUsers && foundUsers.length > 0) {
+                users.push({ accountId: foundUsers[0].accountId });
+            }
+        }
+        if (users.length > 0) to.users = users;
+    }
+
+    // Send notification
+    const notificationPayload = {
+        subject: subject,
+        textBody: message,
+        htmlBody: message.replace(/\n/g, '<br>'),
+        to: to
+    };
+
+    const response = await fetch(
+        `${domain}/rest/api/3/issue/${issueKey}/notify`,
+        {
+            method: 'POST',
+            headers: {
+                'Authorization': authHeader,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(notificationPayload)
+        }
+    );
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to send notification: ${error}`);
+    }
+
+    // Add comment to issue history for audit trail
+    await addComment(domain, authHeader, issueKey,
+        `📧 Notification sent: ${subject}\n\n${message}`
+    );
+
+    console.log('Notification sent and saved to issue history');
+}
+
+// Usage
+await sendNotification(domain, authHeader, 'PROJ-123', {
+    subject: 'Issue Update Required',
+    message: 'Please review the latest changes and provide your feedback.',
+    notifyReporter: true,
+    notifyAssignee: true,
+    additionalEmails: ['stakeholder@example.com']
+});
+```
+
+**Notification Features:**
+- Custom subject and message
+- Select reporter and/or assignee as recipients
+- Add additional recipients by email
+- Automatically saves notification as comment for audit trail
+- Supports both text and HTML message formats
+
+**Best Practices:**
+- Always include a clear subject line
+- Keep messages concise and actionable
+- Use notification history for compliance and audit purposes
+- Consider notification frequency to avoid spam
 
 ---
 
@@ -1038,9 +1389,15 @@ async function safeTransition(domain, authHeader, issueKey, targetStatus) {
 | `/rest/api/3/myself` | GET | Validate authentication |
 | `/rest/api/3/issue` | POST | Create issue (regular projects) |
 | `/rest/api/3/issue/{key}` | GET | Get issue details |
+| `/rest/api/3/issue/{key}` | PUT | Update issue fields |
 | `/rest/api/3/issue/{key}/transitions` | GET | Get available transitions |
 | `/rest/api/3/issue/{key}/transitions` | POST | Execute transition |
 | `/rest/api/3/issue/{key}/comment` | POST | Add comment |
+| `/rest/api/3/issue/{key}/attachments` | POST | Upload attachment |
+| `/rest/api/3/issue/{key}?fields=attachment` | GET | List attachments |
+| `/rest/api/3/issue/{key}?fields=reporter,assignee,creator` | GET | Get reporter info |
+| `/rest/api/3/issue/{key}/notify` | POST | Send email notification |
+| `/rest/api/3/user/search?query={email}` | GET | Search user by email |
 | `/rest/servicedeskapi/servicedesk/{projectKey}` | GET | Get Service Desk info |
 | `/rest/servicedeskapi/servicedesk/{id}/requesttype` | GET | Get request types |
 | `/rest/servicedeskapi/request` | POST | Create Service Desk request |
@@ -1224,6 +1581,21 @@ For Jira API issues:
 ---
 
 ## Changelog
+
+### Version 2.0.0
+- **New Features:**
+  - Attachment upload with multipart form-data support
+  - List and download attachments from issues
+  - Reporter management (view and update)
+  - Email notifications with automatic issue history tracking
+- **Improvements:**
+  - Replaced axios with native Node.js https module for better reliability
+  - Enhanced error handling and user feedback
+  - Added comprehensive API documentation for all operations
+- **Testing:**
+  - Updated web interface with 8 testing sections
+  - Added visual feedback for all operations
+  - Improved form validation and error messages
 
 ### Version 1.0.0
 - Initial release
