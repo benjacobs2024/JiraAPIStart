@@ -245,6 +245,117 @@ app.get('/download-attachment', async (req, res) => {
     }
 });
 
+// Server-side get issue reporter endpoint
+app.post('/get-issue-reporter', async (req, res) => {
+    const { authHeader, issueKey } = req.body;
+
+    if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    try {
+        const response = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}?fields=reporter,assignee,creator,summary`, {
+            method: 'GET',
+            headers: {
+                'Authorization': authHeader,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            res.status(200).json({
+                key: data.key,
+                summary: data.fields.summary,
+                reporter: data.fields.reporter,
+                assignee: data.fields.assignee,
+                creator: data.fields.creator
+            });
+        } else {
+            const data = await response.text();
+            res.status(response.status).json({ error: data });
+        }
+    } catch (error) {
+        console.error('Get issue reporter error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Server-side update issue reporter endpoint
+app.post('/update-issue-reporter', async (req, res) => {
+    const { authHeader, issueKey, reporterEmail } = req.body;
+
+    if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    if (!reporterEmail) {
+        return res.status(400).json({ error: 'Reporter email required' });
+    }
+
+    try {
+        // First, search for the user by email to get their accountId
+        const searchResponse = await fetch(`https://mmn-service.atlassian.net/rest/api/3/user/search?query=${encodeURIComponent(reporterEmail)}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': authHeader,
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!searchResponse.ok) {
+            return res.status(400).json({ error: 'User not found with that email' });
+        }
+
+        const users = await searchResponse.json();
+        if (!users || users.length === 0) {
+            return res.status(400).json({ error: 'No user found with that email address' });
+        }
+
+        const accountId = users[0].accountId;
+
+        // Now update the issue reporter
+        const updateResponse = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': authHeader,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                fields: {
+                    reporter: {
+                        accountId: accountId
+                    }
+                }
+            })
+        });
+
+        if (updateResponse.ok || updateResponse.status === 204) {
+            res.status(200).json({
+                success: true,
+                message: 'Reporter updated successfully',
+                accountId: accountId,
+                email: reporterEmail
+            });
+        } else {
+            const errorText = await updateResponse.text();
+            let errorMessage;
+            try {
+                const errorData = JSON.parse(errorText);
+                errorMessage = errorData.errorMessages?.join(', ') || errorData.errors?.reporter || errorText;
+            } catch (e) {
+                errorMessage = errorText;
+            }
+            res.status(updateResponse.status).json({ error: errorMessage });
+        }
+    } catch (error) {
+        console.error('Update issue reporter error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Server-side transition execution endpoint
 app.post('/execute-transition', async (req, res) => {
     const { authHeader, issueKey, transitionId } = req.body;

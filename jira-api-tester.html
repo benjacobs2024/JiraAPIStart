@@ -225,6 +225,47 @@
             transform: translateY(-1px);
         }
 
+        .reporter-info-box {
+            background: white;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+
+        .info-row {
+            display: flex;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #555;
+            width: 120px;
+            flex-shrink: 0;
+        }
+
+        .info-value {
+            color: #2c3e50;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+        }
+
         .file-input-wrapper {
             margin-top: 5px;
         }
@@ -380,6 +421,29 @@
             <div id="attachments-container"></div>
             <div id="list-attachments-status" class="status"></div>
         </div>
+
+        <!-- Reporter Management Section -->
+        <div class="section">
+            <h2>7. Issue Reporter Management</h2>
+            <div class="form-group">
+                <label for="reporterIssueKey">Issue Key:</label>
+                <input type="text" id="reporterIssueKey" placeholder="JTS-123">
+            </div>
+            <button id="get-reporter-btn" onclick="getIssueReporter()" disabled>Get Issue Info</button>
+            <div id="reporter-info-container"></div>
+
+            <div id="update-reporter-section" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
+                <h3 style="color: #34495e; font-size: 18px; margin-bottom: 15px;">Update Reporter</h3>
+                <div class="form-group">
+                    <label for="newReporterEmail">New Reporter Email:</label>
+                    <input type="email" id="newReporterEmail" placeholder="user@example.com">
+                    <div class="small-text">Note: Reporter updates may require special permissions in Jira</div>
+                </div>
+                <button id="update-reporter-btn" onclick="updateIssueReporter()" disabled>Update Reporter</button>
+            </div>
+
+            <div id="reporter-status" class="status"></div>
+        </div>
     </div>
 
     <script>
@@ -446,6 +510,7 @@
                     document.getElementById('add-comment-btn').disabled = false;
                     document.getElementById('add-attachment-btn').disabled = false;
                     document.getElementById('list-attachments-btn').disabled = false;
+                    document.getElementById('get-reporter-btn').disabled = false;
                 } else {
                     isAuthenticated = false;
                     const errorData = await response.json();
@@ -456,6 +521,7 @@
                     document.getElementById('add-comment-btn').disabled = true;
                     document.getElementById('add-attachment-btn').disabled = true;
                     document.getElementById('list-attachments-btn').disabled = true;
+                    document.getElementById('get-reporter-btn').disabled = true;
                 }
             } catch (error) {
                 isAuthenticated = false;
@@ -976,6 +1042,156 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                 }
             } catch (error) {
                 showStatus('list-attachments-status', `✗ Error downloading ${filename}: ${error.message}`, 'error');
+            }
+        }
+
+        async function getIssueReporter() {
+            if (!isAuthenticated) {
+                showStatus('reporter-status', 'Please authenticate first', 'error');
+                return;
+            }
+
+            const issueKey = document.getElementById('reporterIssueKey').value.trim();
+
+            if (!issueKey) {
+                showStatus('reporter-status', 'Please enter an issue key', 'error');
+                return;
+            }
+
+            showStatus('reporter-status', 'Fetching issue information...', 'info');
+
+            try {
+                const response = await fetch('/get-issue-reporter', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        authHeader: authHeader,
+                        issueKey: issueKey
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayReporterInfo(data);
+                    showStatus('reporter-status', `✓ Successfully retrieved information for ${issueKey}`, 'success');
+
+                    // Show the update section
+                    document.getElementById('update-reporter-section').style.display = 'block';
+                    document.getElementById('update-reporter-btn').disabled = false;
+                } else {
+                    showStatus('reporter-status', `✗ Failed to get issue info: ${data.error}`, 'error');
+                    document.getElementById('reporter-info-container').innerHTML = '';
+                    document.getElementById('update-reporter-section').style.display = 'none';
+                }
+            } catch (error) {
+                showStatus('reporter-status', `✗ Error: ${error.message}`, 'error');
+                document.getElementById('reporter-info-container').innerHTML = '';
+                document.getElementById('update-reporter-section').style.display = 'none';
+            }
+        }
+
+        function displayReporterInfo(data) {
+            const container = document.getElementById('reporter-info-container');
+
+            let html = '<div class="reporter-info-box">';
+            html += `<div style="font-weight: 600; color: #667eea; margin-bottom: 15px; font-size: 16px;">Issue: ${data.key}</div>`;
+            html += `<div style="color: #7f8c8d; margin-bottom: 15px;">${data.summary}</div>`;
+
+            // Reporter
+            if (data.reporter) {
+                html += '<div class="info-row">';
+                html += '<div class="info-label">Reporter:</div>';
+                html += '<div class="info-value"><div class="user-info">';
+                if (data.reporter.avatarUrls && data.reporter.avatarUrls['32x32']) {
+                    html += `<img src="${data.reporter.avatarUrls['32x32']}" alt="${data.reporter.displayName}" class="user-avatar">`;
+                }
+                html += `<div><strong>${data.reporter.displayName}</strong><br><span style="font-size: 12px; color: #7f8c8d;">${data.reporter.emailAddress || 'Email not visible'}</span></div>`;
+                html += '</div></div></div>';
+            }
+
+            // Assignee
+            if (data.assignee) {
+                html += '<div class="info-row">';
+                html += '<div class="info-label">Assignee:</div>';
+                html += '<div class="info-value"><div class="user-info">';
+                if (data.assignee.avatarUrls && data.assignee.avatarUrls['32x32']) {
+                    html += `<img src="${data.assignee.avatarUrls['32x32']}" alt="${data.assignee.displayName}" class="user-avatar">`;
+                }
+                html += `<div><strong>${data.assignee.displayName}</strong><br><span style="font-size: 12px; color: #7f8c8d;">${data.assignee.emailAddress || 'Email not visible'}</span></div>`;
+                html += '</div></div></div>';
+            } else {
+                html += '<div class="info-row">';
+                html += '<div class="info-label">Assignee:</div>';
+                html += '<div class="info-value" style="color: #7f8c8d;">Unassigned</div>';
+                html += '</div>';
+            }
+
+            // Creator
+            if (data.creator) {
+                html += '<div class="info-row">';
+                html += '<div class="info-label">Creator:</div>';
+                html += '<div class="info-value"><div class="user-info">';
+                if (data.creator.avatarUrls && data.creator.avatarUrls['32x32']) {
+                    html += `<img src="${data.creator.avatarUrls['32x32']}" alt="${data.creator.displayName}" class="user-avatar">`;
+                }
+                html += `<div><strong>${data.creator.displayName}</strong><br><span style="font-size: 12px; color: #7f8c8d;">${data.creator.emailAddress || 'Email not visible'}</span></div>`;
+                html += '</div></div></div>';
+            }
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        async function updateIssueReporter() {
+            if (!isAuthenticated) {
+                showStatus('reporter-status', 'Please authenticate first', 'error');
+                return;
+            }
+
+            const issueKey = document.getElementById('reporterIssueKey').value.trim();
+            const reporterEmail = document.getElementById('newReporterEmail').value.trim();
+
+            if (!issueKey) {
+                showStatus('reporter-status', 'Please enter an issue key', 'error');
+                return;
+            }
+
+            if (!reporterEmail) {
+                showStatus('reporter-status', 'Please enter a reporter email address', 'error');
+                return;
+            }
+
+            showStatus('reporter-status', 'Updating reporter...', 'info');
+
+            try {
+                const response = await fetch('/update-issue-reporter', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        authHeader: authHeader,
+                        issueKey: issueKey,
+                        reporterEmail: reporterEmail
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showStatus('reporter-status', `✓ Reporter updated successfully to ${reporterEmail}!`, 'success');
+                    // Clear the email field
+                    document.getElementById('newReporterEmail').value = '';
+                    // Refresh the issue info
+                    setTimeout(() => getIssueReporter(), 1000);
+                } else {
+                    showStatus('reporter-status', `✗ Failed to update reporter: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus('reporter-status', `✗ Error: ${error.message}`, 'error');
             }
         }
     </script>

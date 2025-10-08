@@ -14,6 +14,7 @@ This repository provides a **complete reference implementation** for integrating
 4. ✅ **Comments** - Adding comments to issues
 5. ✅ **Attachments** - Uploading files to existing issues
 6. ✅ **List & Download Attachments** - View and download attachments from issues
+7. ✅ **Reporter Management** - View issue reporter, assignee, creator and update reporter
 
 Includes a web-based testing interface and Node.js proxy server to help developers understand and test Jira API integrations.
 
@@ -58,6 +59,8 @@ The Developer Guide includes:
 - **Attachment Upload** - Upload files to existing issues (up to 10MB)
 - **List Attachments** - View all attachments on an issue with metadata
 - **Download Attachments** - Download attachments directly from the browser
+- **Reporter Management** - View reporter, assignee, and creator with avatars
+- **Update Reporter** - Change the reporter by searching user email
 
 ### Proxy Server Pattern
 
@@ -107,6 +110,9 @@ const JIRA_DOMAIN = 'https://your-domain.atlassian.net';
 | Add Attachment | `/rest/api/3/issue/{key}/attachments` | POST |
 | List Attachments | `/rest/api/3/issue/{key}?fields=attachment` | GET |
 | Download Attachment | Attachment content URL | GET |
+| Get Issue Reporter | `/rest/api/3/issue/{key}?fields=reporter,assignee,creator,summary` | GET |
+| Search User | `/rest/api/3/user/search?query={email}` | GET |
+| Update Reporter | `/rest/api/3/issue/{key}` | PUT |
 
 ## Usage Example
 
