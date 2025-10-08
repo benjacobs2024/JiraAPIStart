@@ -29,6 +29,10 @@ cd JiraAPIStart
 # Install dependencies
 npm install
 
+# Configure environment
+cp .env.example .env
+# Edit .env with your Jira domain
+
 # Start server
 npm start
 
@@ -83,6 +87,9 @@ JiraTestSample/
 ├── server.js                 # Node.js proxy server
 ├── jira-api-tester.html      # Web testing interface
 ├── package.json              # Dependencies
+├── .env.example             # Example environment configuration
+├── .env                      # Your environment configuration (create from .env.example)
+├── .gitignore               # Git ignore rules
 ├── DEVELOPER_GUIDE.md        # Complete integration guide
 └── README.md                 # This file
 ```
@@ -95,11 +102,24 @@ JiraTestSample/
 
 ## Configuration
 
-Update the Jira domain in `server.js`:
+### Environment Variables (Recommended)
+
+Create a `.env` file in the project root:
+
+```bash
+JIRA_DOMAIN=https://your-domain.atlassian.net
+PORT=3000
+```
+
+### Alternative: Direct Configuration
+
+You can also update the Jira domain directly in `server.js`:
 
 ```javascript
-const JIRA_DOMAIN = 'https://your-domain.atlassian.net';
+const JIRA_DOMAIN = process.env.JIRA_DOMAIN || 'https://your-domain.atlassian.net';
 ```
+
+**Note:** The `.env` file is git-ignored to prevent accidental commits of sensitive configuration.
 
 ## API Endpoints Demonstrated
 
@@ -176,6 +196,44 @@ Full troubleshooting guide: [DEVELOPER_GUIDE.md#troubleshooting](DEVELOPER_GUIDE
 - 🔗 [Jira Cloud REST API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/)
 - 🔗 [Service Desk API](https://developer.atlassian.com/cloud/jira/service-desk/rest/)
 - 🔗 [Authentication Docs](https://developer.atlassian.com/cloud/jira/platform/basic-auth-for-rest-apis/)
+
+## Dependencies
+
+This project uses minimal dependencies:
+
+- **express** - Web server framework
+- **cors** - CORS middleware for proxy server
+- **dotenv** - Environment variable management
+- **form-data** - Multipart form data for file uploads
+- **multer** - File upload middleware
+
+All dependencies use native Node.js modules where possible for reliability and security.
+
+## Changelog
+
+### Version 2.0.0
+- ✨ **New Features:**
+  - Attachment upload with multipart form-data support
+  - List and download attachments from issues
+  - Reporter management (view and update)
+  - Email notifications with automatic issue history tracking
+- 🔧 **Improvements:**
+  - Environment variable configuration support
+  - Replaced axios with native Node.js https module
+  - Enhanced error handling and user feedback
+  - Comprehensive API documentation
+- 🧪 **Testing:**
+  - Web interface expanded to 8 testing sections
+  - Visual feedback for all operations
+  - Improved form validation
+
+### Version 1.0.0
+- Initial release with core functionality
+- Authentication implementation
+- Issue creation (regular + Service Desk)
+- Workflow transitions
+- Comment functionality
+- Web-based testing interface
 
 ## License
 
