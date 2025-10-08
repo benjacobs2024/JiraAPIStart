@@ -182,6 +182,49 @@
             margin-top: 5px;
         }
 
+        .attachment-item {
+            background: white;
+            padding: 12px;
+            margin-top: 10px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .attachment-info {
+            flex: 1;
+        }
+
+        .attachment-name {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 14px;
+        }
+
+        .attachment-meta {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 4px;
+        }
+
+        .download-btn {
+            padding: 8px 16px;
+            font-size: 12px;
+            background: #17a2b8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .download-btn:hover {
+            background: #138496;
+            transform: translateY(-1px);
+        }
+
         .file-input-wrapper {
             margin-top: 5px;
         }
@@ -325,6 +368,18 @@
             <button id="add-attachment-btn" onclick="addAttachment()" disabled>Upload Attachment</button>
             <div id="attachment-status" class="status"></div>
         </div>
+
+        <!-- List Attachments Section -->
+        <div class="section">
+            <h2>6. List & Download Attachments</h2>
+            <div class="form-group">
+                <label for="listAttachmentIssueKey">Issue Key:</label>
+                <input type="text" id="listAttachmentIssueKey" placeholder="JTS-123">
+            </div>
+            <button id="list-attachments-btn" onclick="listAttachments()" disabled>Get Attachments</button>
+            <div id="attachments-container"></div>
+            <div id="list-attachments-status" class="status"></div>
+        </div>
     </div>
 
     <script>
@@ -390,6 +445,7 @@
                     document.getElementById('get-transitions-btn').disabled = false;
                     document.getElementById('add-comment-btn').disabled = false;
                     document.getElementById('add-attachment-btn').disabled = false;
+                    document.getElementById('list-attachments-btn').disabled = false;
                 } else {
                     isAuthenticated = false;
                     const errorData = await response.json();
@@ -399,6 +455,7 @@
                     document.getElementById('get-transitions-btn').disabled = true;
                     document.getElementById('add-comment-btn').disabled = true;
                     document.getElementById('add-attachment-btn').disabled = true;
+                    document.getElementById('list-attachments-btn').disabled = true;
                 }
             } catch (error) {
                 isAuthenticated = false;
@@ -817,6 +874,108 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                 }
             } catch (error) {
                 showStatus('attachment-status', `✗ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function listAttachments() {
+            if (!isAuthenticated) {
+                showStatus('list-attachments-status', 'Please authenticate first', 'error');
+                return;
+            }
+
+            const issueKey = document.getElementById('listAttachmentIssueKey').value.trim();
+
+            if (!issueKey) {
+                showStatus('list-attachments-status', 'Please enter an issue key', 'error');
+                return;
+            }
+
+            showStatus('list-attachments-status', 'Fetching attachments...', 'info');
+
+            try {
+                const response = await fetch('/list-attachments', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        authHeader: authHeader,
+                        issueKey: issueKey
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayAttachments(issueKey, data);
+                    showStatus('list-attachments-status', `✓ Found ${data.length} attachment(s)`, 'success');
+                } else {
+                    showStatus('list-attachments-status', `✗ Failed to get attachments: ${data.error}`, 'error');
+                    document.getElementById('attachments-container').innerHTML = '';
+                }
+            } catch (error) {
+                showStatus('list-attachments-status', `✗ Error: ${error.message}`, 'error');
+                document.getElementById('attachments-container').innerHTML = '';
+            }
+        }
+
+        function displayAttachments(issueKey, attachments) {
+            const container = document.getElementById('attachments-container');
+
+            if (attachments.length === 0) {
+                container.innerHTML = '<div class="issue-item">No attachments found for this issue.</div>';
+                return;
+            }
+
+            let html = '<div style="margin-top: 15px;">';
+            html += `<div style="font-weight: 600; color: #667eea; margin-bottom: 10px;">Attachments for ${issueKey}:</div>`;
+
+            attachments.forEach(attachment => {
+                const sizeInKB = (attachment.size / 1024).toFixed(2);
+                const createdDate = new Date(attachment.created).toLocaleString();
+
+                html += `<div class="attachment-item">`;
+                html += `<div class="attachment-info">`;
+                html += `<div class="attachment-name">${attachment.filename}</div>`;
+                html += `<div class="attachment-meta">Size: ${sizeInKB} KB | Uploaded: ${createdDate} | By: ${attachment.author.displayName}</div>`;
+                html += `</div>`;
+                html += `<button class="download-btn" onclick="downloadAttachment('${attachment.content}', '${attachment.filename}')">Download</button>`;
+                html += `</div>`;
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        async function downloadAttachment(url, filename) {
+            try {
+                showStatus('list-attachments-status', `Downloading ${filename}...`, 'info');
+
+                // Use the server proxy to download the attachment
+                const downloadUrl = `/download-attachment?url=${encodeURIComponent(url)}&auth=${encodeURIComponent(authHeader)}`;
+
+                const response = await fetch(downloadUrl);
+
+                if (response.ok) {
+                    const blob = await response.blob();
+
+                    // Create a temporary download link
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = window.URL.createObjectURL(blob);
+                    downloadLink.download = filename;
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+
+                    // Clean up the object URL
+                    window.URL.revokeObjectURL(downloadLink.href);
+
+                    showStatus('list-attachments-status', `✓ Downloaded ${filename} successfully!`, 'success');
+                } else {
+                    showStatus('list-attachments-status', `✗ Failed to download ${filename}`, 'error');
+                }
+            } catch (error) {
+                showStatus('list-attachments-status', `✗ Error downloading ${filename}: ${error.message}`, 'error');
             }
         }
     </script>

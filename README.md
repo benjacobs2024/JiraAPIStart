@@ -13,6 +13,7 @@ This repository provides a **complete reference implementation** for integrating
 3. ✅ **Workflow Transitions** - Moving issues through statuses
 4. ✅ **Comments** - Adding comments to issues
 5. ✅ **Attachments** - Uploading files to existing issues
+6. ✅ **List & Download Attachments** - View and download attachments from issues
 
 Includes a web-based testing interface and Node.js proxy server to help developers understand and test Jira API integrations.
 
@@ -55,6 +56,8 @@ The Developer Guide includes:
 - **Workflow Transitions** - Test state changes
 - **Comment Testing** - Add comments to issues
 - **Attachment Upload** - Upload files to existing issues (up to 10MB)
+- **List Attachments** - View all attachments on an issue with metadata
+- **Download Attachments** - Download attachments directly from the browser
 
 ### Proxy Server Pattern
 
@@ -102,6 +105,8 @@ const JIRA_DOMAIN = 'https://your-domain.atlassian.net';
 | Execute Transition | `/rest/api/3/issue/{key}/transitions` | POST |
 | Add Comment | `/rest/api/3/issue/{key}/comment` | POST |
 | Add Attachment | `/rest/api/3/issue/{key}/attachments` | POST |
+| List Attachments | `/rest/api/3/issue/{key}?fields=attachment` | GET |
+| Download Attachment | Attachment content URL | GET |
 
 ## Usage Example
 

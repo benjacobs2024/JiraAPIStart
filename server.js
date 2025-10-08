@@ -167,6 +167,84 @@ app.post('/add-attachment', upload.single('file'), async (req, res) => {
     }
 });
 
+// Server-side list attachments endpoint
+app.post('/list-attachments', async (req, res) => {
+    const { authHeader, issueKey } = req.body;
+
+    if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    try {
+        const response = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}?fields=attachment`, {
+            method: 'GET',
+            headers: {
+                'Authorization': authHeader,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            const attachments = data.fields?.attachment || [];
+            res.status(200).json(attachments);
+        } else {
+            const data = await response.text();
+            res.status(response.status).json({ error: data });
+        }
+    } catch (error) {
+        console.error('List attachments error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Server-side download attachment endpoint (proxy)
+app.get('/download-attachment', async (req, res) => {
+    const { url, auth } = req.query;
+
+    if (!auth) {
+        return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    if (!url) {
+        return res.status(400).json({ error: 'URL required' });
+    }
+
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': auth,
+                'Accept': '*/*'
+            }
+        });
+
+        if (response.ok) {
+            // Get the content type and file name from headers
+            const contentType = response.headers.get('content-type');
+            const contentDisposition = response.headers.get('content-disposition');
+
+            // Set headers for download
+            if (contentType) {
+                res.setHeader('Content-Type', contentType);
+            }
+            if (contentDisposition) {
+                res.setHeader('Content-Disposition', contentDisposition);
+            }
+
+            // Pipe the response body to the client
+            const buffer = await response.arrayBuffer();
+            res.send(Buffer.from(buffer));
+        } else {
+            res.status(response.status).json({ error: 'Failed to download attachment' });
+        }
+    } catch (error) {
+        console.error('Download attachment error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Server-side transition execution endpoint
 app.post('/execute-transition', async (req, res) => {
     const { authHeader, issueKey, transitionId } = req.body;
