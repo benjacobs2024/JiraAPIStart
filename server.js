@@ -30,14 +30,16 @@ app.use(express.static('.'));
 
 // Server-side add comment endpoint
 app.post('/add-comment', async (req, res) => {
-    const { authHeader, issueKey, comment } = req.body;
+    const { authHeader, issueKey, comment, jiraDomain } = req.body;
 
     if (!authHeader) {
         return res.status(401).json({ error: 'Authorization required' });
     }
 
+    const domain = jiraDomain || JIRA_DOMAIN;
+
     try {
-        const response = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}/comment`, {
+        const response = await fetch(`${domain}/rest/api/3/issue/${issueKey}/comment`, {
             method: 'POST',
             headers: {
                 'Authorization': authHeader,
@@ -78,7 +80,8 @@ app.post('/add-attachment', upload.single('file'), async (req, res) => {
     console.log('Body:', req.body);
     console.log('File:', req.file);
 
-    const { authHeader, issueKey } = req.body;
+    const { authHeader, issueKey, jiraDomain } = req.body;
+    const domain = jiraDomain || JIRA_DOMAIN;
 
     if (!authHeader) {
         console.log('Error: No authHeader provided');
@@ -106,8 +109,10 @@ app.post('/add-attachment', upload.single('file'), async (req, res) => {
 
         // Use https module with form-data for proper multipart upload
         const uploadPromise = new Promise((resolve, reject) => {
+            // Extract hostname from domain URL
+            const domainUrl = new URL(domain);
             const options = {
-                hostname: 'mmn-service.atlassian.net',
+                hostname: domainUrl.hostname,
                 path: `/rest/api/3/issue/${issueKey}/attachments`,
                 method: 'POST',
                 headers: {
@@ -169,14 +174,16 @@ app.post('/add-attachment', upload.single('file'), async (req, res) => {
 
 // Server-side list attachments endpoint
 app.post('/list-attachments', async (req, res) => {
-    const { authHeader, issueKey } = req.body;
+    const { authHeader, issueKey, jiraDomain } = req.body;
 
     if (!authHeader) {
         return res.status(401).json({ error: 'Authorization required' });
     }
 
+    const domain = jiraDomain || JIRA_DOMAIN;
+
     try {
-        const response = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}?fields=attachment`, {
+        const response = await fetch(`${domain}/rest/api/3/issue/${issueKey}?fields=attachment`, {
             method: 'GET',
             headers: {
                 'Authorization': authHeader,
@@ -247,14 +254,16 @@ app.get('/download-attachment', async (req, res) => {
 
 // Server-side get issue reporter endpoint
 app.post('/get-issue-reporter', async (req, res) => {
-    const { authHeader, issueKey } = req.body;
+    const { authHeader, issueKey, jiraDomain } = req.body;
 
     if (!authHeader) {
         return res.status(401).json({ error: 'Authorization required' });
     }
 
+    const domain = jiraDomain || JIRA_DOMAIN;
+
     try {
-        const response = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}?fields=reporter,assignee,creator,summary`, {
+        const response = await fetch(`${domain}/rest/api/3/issue/${issueKey}?fields=reporter,assignee,creator,summary`, {
             method: 'GET',
             headers: {
                 'Authorization': authHeader,
@@ -284,7 +293,7 @@ app.post('/get-issue-reporter', async (req, res) => {
 
 // Server-side update issue reporter endpoint
 app.post('/update-issue-reporter', async (req, res) => {
-    const { authHeader, issueKey, reporterEmail } = req.body;
+    const { authHeader, issueKey, reporterEmail, jiraDomain } = req.body;
 
     if (!authHeader) {
         return res.status(401).json({ error: 'Authorization required' });
@@ -294,9 +303,11 @@ app.post('/update-issue-reporter', async (req, res) => {
         return res.status(400).json({ error: 'Reporter email required' });
     }
 
+    const domain = jiraDomain || JIRA_DOMAIN;
+
     try {
         // First, search for the user by email to get their accountId
-        const searchResponse = await fetch(`https://mmn-service.atlassian.net/rest/api/3/user/search?query=${encodeURIComponent(reporterEmail)}`, {
+        const searchResponse = await fetch(`${domain}/rest/api/3/user/search?query=${encodeURIComponent(reporterEmail)}`, {
             method: 'GET',
             headers: {
                 'Authorization': authHeader,
@@ -316,7 +327,7 @@ app.post('/update-issue-reporter', async (req, res) => {
         const accountId = users[0].accountId;
 
         // Now update the issue reporter
-        const updateResponse = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}`, {
+        const updateResponse = await fetch(`${domain}/rest/api/3/issue/${issueKey}`, {
             method: 'PUT',
             headers: {
                 'Authorization': authHeader,
@@ -358,7 +369,7 @@ app.post('/update-issue-reporter', async (req, res) => {
 
 // Server-side send email notification endpoint
 app.post('/send-notification', async (req, res) => {
-    const { authHeader, issueKey, subject, message, notifyReporter, notifyAssignee, additionalEmails } = req.body;
+    const { authHeader, issueKey, subject, message, notifyReporter, notifyAssignee, additionalEmails, jiraDomain } = req.body;
 
     if (!authHeader) {
         return res.status(401).json({ error: 'Authorization required' });
@@ -367,6 +378,8 @@ app.post('/send-notification', async (req, res) => {
     if (!subject || !message) {
         return res.status(400).json({ error: 'Subject and message are required' });
     }
+
+    const domain = jiraDomain || JIRA_DOMAIN;
 
     try {
         // Build the notification payload
@@ -393,7 +406,7 @@ app.post('/send-notification', async (req, res) => {
             const users = [];
             for (const email of additionalEmails) {
                 try {
-                    const searchResponse = await fetch(`https://mmn-service.atlassian.net/rest/api/3/user/search?query=${encodeURIComponent(email)}`, {
+                    const searchResponse = await fetch(`${domain}/rest/api/3/user/search?query=${encodeURIComponent(email)}`, {
                         method: 'GET',
                         headers: {
                             'Authorization': authHeader,
@@ -422,7 +435,7 @@ app.post('/send-notification', async (req, res) => {
         console.log('Sending notification:', JSON.stringify(notificationPayload, null, 2));
 
         // Send the notification
-        const response = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}/notify`, {
+        const response = await fetch(`${domain}/rest/api/3/issue/${issueKey}/notify`, {
             method: 'POST',
             headers: {
                 'Authorization': authHeader,
@@ -451,7 +464,7 @@ app.post('/send-notification', async (req, res) => {
                     }
                 };
 
-                const commentResponse = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}/comment`, {
+                const commentResponse = await fetch(`${domain}/rest/api/3/issue/${issueKey}/comment`, {
                     method: 'POST',
                     headers: {
                         'Authorization': authHeader,
@@ -504,14 +517,16 @@ app.post('/send-notification', async (req, res) => {
 
 // Server-side transition execution endpoint
 app.post('/execute-transition', async (req, res) => {
-    const { authHeader, issueKey, transitionId } = req.body;
+    const { authHeader, issueKey, transitionId, jiraDomain } = req.body;
 
     if (!authHeader) {
         return res.status(401).json({ error: 'Authorization required' });
     }
 
+    const domain = jiraDomain || JIRA_DOMAIN;
+
     try {
-        const response = await fetch(`https://mmn-service.atlassian.net/rest/api/3/issue/${issueKey}/transitions`, {
+        const response = await fetch(`${domain}/rest/api/3/issue/${issueKey}/transitions`, {
             method: 'POST',
             headers: {
                 'Authorization': authHeader,
@@ -537,18 +552,20 @@ app.post('/execute-transition', async (req, res) => {
 
 // Server-side issue creation endpoint (bypasses browser XSRF)
 app.post('/create-issue', async (req, res) => {
-    const { authHeader, projectKey, projectType, requestTypeId, issueType, summary, description } = req.body;
+    const { authHeader, projectKey, projectType, requestTypeId, issueType, summary, description, jiraDomain } = req.body;
 
     if (!authHeader) {
         return res.status(401).json({ error: 'Authorization required' });
     }
+
+    const domain = jiraDomain || JIRA_DOMAIN;
 
     try {
         let url, requestBody;
 
         if (projectType === 'servicedesk') {
             // Get service desk ID first
-            const sdResponse = await fetch(`https://mmn-service.atlassian.net/rest/servicedeskapi/servicedesk/${projectKey}`, {
+            const sdResponse = await fetch(`${domain}/rest/servicedeskapi/servicedesk/${projectKey}`, {
                 headers: {
                     'Authorization': authHeader,
                     'Accept': 'application/json'
@@ -562,7 +579,7 @@ app.post('/create-issue', async (req, res) => {
             const sdData = await sdResponse.json();
             const serviceDeskId = sdData.id;
 
-            url = `https://mmn-service.atlassian.net/rest/servicedeskapi/request`;
+            url = `${domain}/rest/servicedeskapi/request`;
             requestBody = {
                 serviceDeskId: serviceDeskId,
                 requestTypeId: requestTypeId,
@@ -572,7 +589,7 @@ app.post('/create-issue', async (req, res) => {
                 }
             };
         } else {
-            url = `https://mmn-service.atlassian.net/rest/api/3/issue`;
+            url = `${domain}/rest/api/3/issue`;
             requestBody = {
                 fields: {
                     project: { key: projectKey },
@@ -617,7 +634,10 @@ app.post('/create-issue', async (req, res) => {
 // Proxy endpoint for Jira API
 app.all('/api/*', async (req, res) => {
     const jiraPath = req.path.replace('/api', '');
-    const jiraUrl = `${JIRA_DOMAIN}${jiraPath}`;
+
+    // Get Jira domain from custom header or fall back to environment variable
+    const jiraDomain = req.headers['x-jira-domain'] || JIRA_DOMAIN;
+    const jiraUrl = `${jiraDomain}${jiraPath}`;
 
     // Get auth header from request
     const authHeader = req.headers.authorization;

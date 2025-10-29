@@ -176,6 +176,18 @@
             background: #218838;
         }
 
+        .transition-btn.current-status {
+            background: #ffc107;
+            color: #000;
+            font-weight: 700;
+            cursor: default;
+        }
+
+        .transition-btn.current-status:hover {
+            background: #ffc107;
+            transform: none;
+        }
+
         .small-text {
             font-size: 12px;
             color: #7f8c8d;
@@ -310,6 +322,16 @@
         <h1>Jira API Tester</h1>
         <div class="site-info">
             <strong>Reference Implementation:</strong> Test Jira Cloud API integration - Authentication, Issue Creation, Transitions, and Comments
+        </div>
+
+        <!-- Jira Domain Configuration -->
+        <div class="section">
+            <h2>0. Jira Configuration</h2>
+            <div class="form-group">
+                <label for="jiraDomain">Jira Domain:</label>
+                <input type="text" id="jiraDomain" placeholder="https://your-domain.atlassian.net" value="https://mmn-service.atlassian.net">
+                <div class="small-text">Enter your Jira Cloud domain (e.g., https://your-company.atlassian.net)</div>
+            </div>
         </div>
 
         <!-- Authentication Section -->
@@ -493,6 +515,10 @@
         let authHeader = '';
         let isAuthenticated = false;
 
+        function getJiraDomain() {
+            return document.getElementById('jiraDomain').value.trim() || 'https://mmn-service.atlassian.net';
+        }
+
         // Toggle between service desk and regular project fields
         document.addEventListener('DOMContentLoaded', function() {
             const projectTypeSelect = document.getElementById('projectType');
@@ -538,7 +564,8 @@
                     headers: {
                         'Authorization': authHeader,
                         'Accept': 'application/json',
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Jira-Domain': getJiraDomain()
                     }
                 });
 
@@ -595,7 +622,8 @@
                     headers: {
                         'Authorization': authHeader,
                         'Accept': 'application/json',
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Jira-Domain': getJiraDomain()
                     }
                 });
 
@@ -612,7 +640,8 @@
                     headers: {
                         'Authorization': authHeader,
                         'Accept': 'application/json',
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Jira-Domain': getJiraDomain()
                     }
                 });
 
@@ -645,6 +674,7 @@
             const description = document.getElementById('description').value;
             const email = document.getElementById('email').value.trim();
             const apiKey = document.getElementById('apiKey').value.trim();
+            const jiraDomain = getJiraDomain();
 
             if (!email || !apiKey || !projectKey || !summary) {
                 alert('Please fill in email, API key, project key, and summary');
@@ -663,7 +693,7 @@
                 curlCmd = `# Get Service Desk ID first
 SD_ID=$(curl -s -u "${email}:${apiKey}" \\
   -H "Accept: application/json" \\
-  "https://mmn-service.atlassian.net/rest/servicedeskapi/servicedesk/${projectKey}" | \\
+  "${jiraDomain}/rest/servicedeskapi/servicedesk/${projectKey}" | \\
   grep -o '"id":"[0-9]*"' | grep -o '[0-9]*')
 
 echo "Service Desk ID: $SD_ID"
@@ -681,7 +711,7 @@ curl -u "${email}:YOUR_API_TOKEN" \\
       "description": "${description.replace(/"/g, '\\"')}"
     }
   }' \\
-  "https://mmn-service.atlassian.net/rest/servicedeskapi/request"`;
+  "${jiraDomain}/rest/servicedeskapi/request"`;
             } else {
                 const issueType = document.getElementById('issueType').value;
                 curlCmd = `curl -u "${email}:YOUR_API_TOKEN" \\
@@ -703,7 +733,7 @@ curl -u "${email}:YOUR_API_TOKEN" \\
       "issuetype": { "name": "${issueType}" }
     }
   }' \\
-  "https://mmn-service.atlassian.net/rest/api/3/issue"`;
+  "${jiraDomain}/rest/api/3/issue"`;
             }
 
             const curlDiv = document.getElementById('curl-command');
@@ -757,7 +787,8 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                         requestTypeId: document.getElementById('requestTypeId').value,
                         issueType: document.getElementById('issueType').value,
                         summary: summary,
-                        description: description
+                        description: description,
+                        jiraDomain: getJiraDomain()
                     })
                 });
 
@@ -795,22 +826,38 @@ curl -u "${email}:YOUR_API_TOKEN" \\
             showStatus('transitions-status', 'Fetching transitions...', 'info');
 
             try {
-                const response = await fetch(`${JIRA_DOMAIN}/rest/api/3/issue/${issueKey}/transitions`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': authHeader,
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    }
-                });
+                // Fetch both transitions and current issue status
+                const [transitionsResponse, issueResponse] = await Promise.all([
+                    fetch(`${JIRA_DOMAIN}/rest/api/3/issue/${issueKey}/transitions`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': authHeader,
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-Jira-Domain': getJiraDomain()
+                        }
+                    }),
+                    fetch(`${JIRA_DOMAIN}/rest/api/3/issue/${issueKey}?fields=status`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': authHeader,
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-Jira-Domain': getJiraDomain()
+                        }
+                    })
+                ]);
 
-                if (response.ok) {
-                    const data = await response.json();
-                    displayTransitions(issueKey, data.transitions);
-                    showStatus('transitions-status', `✓ Found ${data.transitions.length} available transitions`, 'success');
+                if (transitionsResponse.ok && issueResponse.ok) {
+                    const transitionsData = await transitionsResponse.json();
+                    const issueData = await issueResponse.json();
+                    const currentStatus = issueData.fields.status.name;
+
+                    displayTransitions(issueKey, transitionsData.transitions, currentStatus);
+                    showStatus('transitions-status', `✓ Found ${transitionsData.transitions.length} available transitions`, 'success');
                 } else {
-                    const errorData = await response.json();
-                    showStatus('transitions-status', `✗ Failed to get transitions: ${errorData.message || response.statusText}`, 'error');
+                    const errorData = await transitionsResponse.json();
+                    showStatus('transitions-status', `✗ Failed to get transitions: ${errorData.message || transitionsResponse.statusText}`, 'error');
                     document.getElementById('transitions-container').innerHTML = '';
                 }
             } catch (error) {
@@ -819,7 +866,7 @@ curl -u "${email}:YOUR_API_TOKEN" \\
             }
         }
 
-        function displayTransitions(issueKey, transitions) {
+        function displayTransitions(issueKey, transitions, currentStatus) {
             const container = document.getElementById('transitions-container');
 
             if (transitions.length === 0) {
@@ -829,8 +876,22 @@ curl -u "${email}:YOUR_API_TOKEN" \\
 
             let html = '<div class="issue-item">';
             html += `<div class="issue-key">${issueKey}</div>`;
+
+            // Show current status prominently
+            if (currentStatus) {
+                html += `<div style="margin: 10px 0; padding: 8px 12px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">`;
+                html += `<strong style="color: #856404;">Current Status:</strong> <span style="color: #000; font-weight: 600;">${currentStatus}</span>`;
+                html += `</div>`;
+            }
+
             html += '<div class="transition-list">';
 
+            // First, add a button for the current status (non-clickable, highlighted in yellow)
+            if (currentStatus) {
+                html += `<button class="transition-btn current-status" disabled>${currentStatus}</button>`;
+            }
+
+            // Then add all available transitions
             transitions.forEach(transition => {
                 html += `<button class="transition-btn" onclick="executeTransition('${issueKey}', '${transition.id}', '${transition.name}')">${transition.name}</button>`;
             });
@@ -856,7 +917,8 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                     body: JSON.stringify({
                         authHeader: authHeader,
                         issueKey: issueKey,
-                        transitionId: transitionId
+                        transitionId: transitionId,
+                        jiraDomain: getJiraDomain()
                     })
                 });
 
@@ -900,7 +962,8 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                     body: JSON.stringify({
                         authHeader: authHeader,
                         issueKey: issueKey,
-                        comment: commentText
+                        comment: commentText,
+                        jiraDomain: getJiraDomain()
                     })
                 });
 
@@ -965,6 +1028,7 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                 formData.append('file', file);
                 formData.append('authHeader', authHeader);
                 formData.append('issueKey', issueKey);
+                formData.append('jiraDomain', getJiraDomain());
 
                 const response = await fetch('/add-attachment', {
                     method: 'POST',
@@ -1010,7 +1074,8 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                     },
                     body: JSON.stringify({
                         authHeader: authHeader,
-                        issueKey: issueKey
+                        issueKey: issueKey,
+                        jiraDomain: getJiraDomain()
                     })
                 });
 
@@ -1112,7 +1177,8 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                     },
                     body: JSON.stringify({
                         authHeader: authHeader,
-                        issueKey: issueKey
+                        issueKey: issueKey,
+                        jiraDomain: getJiraDomain()
                     })
                 });
 
@@ -1219,7 +1285,8 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                     body: JSON.stringify({
                         authHeader: authHeader,
                         issueKey: issueKey,
-                        reporterEmail: reporterEmail
+                        reporterEmail: reporterEmail,
+                        jiraDomain: getJiraDomain()
                     })
                 });
 
@@ -1290,7 +1357,8 @@ curl -u "${email}:YOUR_API_TOKEN" \\
                         message: message,
                         notifyReporter: notifyReporter,
                         notifyAssignee: notifyAssignee,
-                        additionalEmails: additionalEmails
+                        additionalEmails: additionalEmails,
+                        jiraDomain: getJiraDomain()
                     })
                 });
 
